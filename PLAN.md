@@ -32,6 +32,10 @@ Start
 
   → [ORCHESTRATOR] Fetch open issues in priority order
       → Exclude issues that already have an open PR with head branch matching agent/issue-{N}-*
+      → Unless REQUIRE_ISSUE_ALLOWLIST=false, only consider issues where:
+          - the issue author is on the allowlist, OR
+          - an allowlist user has commented with `agent: consider`
+      → Non-qualifying issues are silently skipped (not logged individually)
   → If none: log task=idle, exit
 
   → Iterate issues in priority order:
@@ -180,8 +184,9 @@ GIT_USER_NAME=                       # used for git commit author (e.g. "My Bot"
 GIT_USER_EMAIL=                      # use GitHub noreply: ID+username@users.noreply.github.com
 
 # Comment filtering
-AGENT_COMMENT_ALLOWLIST=user1,user2  # if set, only these users can trigger work
+AGENT_COMMENT_ALLOWLIST=user1,user2  # if set, only these users can trigger work (issues + PR threads)
 AGENT_COMMENT_SKIPLIST=dependabot[bot],github-actions[bot]
+REQUIRE_ISSUE_ALLOWLIST=true         # set false for private repos to process issues from any user
 
 # Safety limits
 MAX_TOOL_ITERATIONS=25               # hard ceiling on AI tool-use loop (IMPLEMENT)
@@ -335,6 +340,7 @@ Format: `agent/issue-{N}-{short-slug}`
 | Merge conflict during implementation | Rebase from main before push; on conflict abort, delete branch, log `implement_conflict` |
 | AI tool accessing wrong issue/PR | `get_issue_details` and `post_comment` scoped to current work item; enforced at tool level |
 | Stale plan implemented after issue edit | Documented behavior: humans must delete approval and re-approve after editing an issue |
+| Untrusted users filing issues on public repos | `REQUIRE_ISSUE_ALLOWLIST=true` by default; gates issue triage to allowlist authors or explicit `agent: consider`; disable for private repos |
 | GitHub comment ID API instability | Using REST API comment IDs, which have been stable; noted as an implementation assumption |
 
 ---
