@@ -55,7 +55,9 @@ Start
           → If merge conflict: abort, delete branch, log task=implement_conflict, exit
           → [ORCHESTRATOR] Commit, push branch
           → [ORCHESTRATOR] Open PR (title from issue title; body from template — see PR Format)
-          → Log task=implement, issue=#, pr=#, exit
+          → [AI: REVIEW] Self-review the diff — check for missed requirements, bugs, style issues
+          → If review finds issues: post them as PR review comments, log task=implement_reviewed, exit
+          → If review is clean: log task=implement, issue=#, pr=#, exit
 
   → If all issues were skipped (all awaiting approval):
       → Log task=awaiting_approval, exit
@@ -72,8 +74,9 @@ One exit point per run. Stateless by design — all state lives in GitHub. The i
 | **PR FIX** | All unresolved thread diff hunks + file contexts | Code changes via tool calls | Yes (capped at `MAX_PR_FIX_ITERATIONS`) |
 | **PLAN** | Issue title, body, and comments | Markdown implementation plan (size-capped) | No |
 | **IMPLEMENT** | Approved plan, tool-use access to repo filesystem and shell | Code changes via tool calls | Yes (capped at `MAX_TOOL_ITERATIONS`) |
+| **REVIEW** | PR diff + approved plan | Review comments or clean approval | No |
 
-PR FIX reuses the IMPLEMENT tool loop with a lower iteration cap. PLAN is a single-turn completion.
+PR FIX reuses the IMPLEMENT tool loop with a lower iteration cap. PLAN and REVIEW are single-turn completions.
 
 ---
 
@@ -107,6 +110,16 @@ The agent exposes these tools to the AI during the IMPLEMENT and PR FIX phases:
 **Tool scope:** `get_issue_details` and `post_comment` are scoped to the current work item only. The orchestrator injects the target issue/PR number at invocation time and the tool implementations enforce it — the AI cannot reach arbitrary issues or PRs.
 
 **Context strategy:** Do not dump the full repo into the prompt. Feed the issue and plan, then let the AI pull in what it needs via `list_directory` and `read_file`. This keeps token usage bounded and mirrors how a developer actually explores a codebase.
+
+### AI System Prompt
+
+Every AI invocation (PLAN, IMPLEMENT, PR FIX) includes a system prompt assembled by the orchestrator. The prompt contains:
+
+1. **Role and constraints** — agent identity, iteration limits, tool descriptions, formatting expectations.
+2. **Repo-specific guidance** — if `CONTRIB-agents.md` exists at the repo root, the prompt instructs the AI to read it first via `read_file` before starting work. Same for `CONTEXT.md`. The orchestrator checks for these files during clone/setup and conditionally includes the instruction — no wasted tokens if the files don't exist.
+3. **Task payload** — varies by invocation type (issue body + comments for PLAN; approved plan for IMPLEMENT; review threads + diff hunks for PR FIX).
+
+`CONTRIB-agents.md` is intended for repo owners to provide agent-specific contribution guidelines (e.g., "always run `make lint` before committing", "never modify files under `vendor/`"). `CONTEXT.md` provides general project context (architecture, conventions, key decisions). Both are optional.
 
 ### Tool Implementation Notes
 
@@ -222,7 +235,7 @@ Each run appends one JSON record to `$LOG_DIR/runs.jsonl`. Log rotation is handl
   "run_id": "a3f2c1d4-7e6b-4c2a-9f1d-3b8e5a2c0d9f",
   "timestamp": "2026-03-14T12:00:00Z",
   "repo": "owner/repo",
-  "task": "implement | plan | pr_review | awaiting_approval | idle | plan_failed | implement_conflict | validation_failed | error",
+  "task": "implement | implement_reviewed | plan | pr_review | awaiting_approval | idle | plan_failed | implement_conflict | validation_failed | error",
   "issue": 42,
   "pr": null,
   "duration_ms": 12400,
