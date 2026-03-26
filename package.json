@@ -1,0 +1,25 @@
+{
+  "name": "steward",
+  "version": "0.1.0",
+  "description": "GitHub agent for issue triage, planning, implementation, and PR review",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "node --env-file=.env --import tsx/esm src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@octokit/auth-app": "^8.2.0",
+    "@octokit/graphql": "^8.2.1",
+    "@octokit/rest": "^21.1.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.2",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}
