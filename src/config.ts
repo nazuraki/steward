@@ -99,7 +99,7 @@ export function loadEnvConfig(githubToken: string): EnvConfig {
 export function loadRepoConfig(workDir: string): RepoConfig {
   let fileConfig: Partial<RepoConfig & { limits: Partial<Limits> }> = {};
 
-  for (const name of ['steward.json', '.steward.json']) {
+  for (const name of ['steward.json', '.steward.json', 'steward.config.json']) {
     const path = join(workDir, name);
     if (existsSync(path)) {
       try {

@@ -128,7 +128,7 @@ Each run clones the target repo fresh into `WORK_DIR` and appends a JSON record 
 
 ## Repo configuration
 
-Steward reads `steward.json` (or `.steward.json`) from the root of the target repo. All fields are optional — defaults apply for anything omitted.
+Steward reads `steward.json` (or `.steward.json` or `steward.config.json`) from the root of the target repo. All fields are optional — defaults apply for anything omitted.
 
 ```json
 {
@@ -184,9 +184,3 @@ Use `<none>` or `<missing>` as a sentinel to explicitly position unlabeled issue
 ```
 
 This places unlabeled issues between `priority` and `nice to have` issues. Without the sentinel, unlabeled issues always sort after all labeled tiers.
-
----
-
-## Future work
-
-**Auto-labeling** — If an issue has been open longer than a configurable threshold (e.g. 7 days) and has no label matching `requiredLabels`, steward could use AI to read the issue and apply the appropriate label automatically. This would allow steward to pick up unlabeled issues that stall in triage rather than silently skipping them forever. The age gate prevents noisy labeling of brand-new issues that humans haven't triaged yet.
