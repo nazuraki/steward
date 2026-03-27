@@ -1,0 +1,108 @@
+# Example GitHub Actions workflow for running Steward on a schedule.
+#
+# Copy this file to .github/workflows/steward.yml in the TARGET repo
+# (the repo Steward will triage issues and open PRs against).
+#
+# Required secrets (configure in Settings > Secrets and variables > Actions):
+#   ANTHROPIC_API_KEY          - Anthropic API key for Claude
+#
+# Authentication — choose ONE:
+#   Option A (recommended): GitHub App
+#     STEWARD_APP_ID             - GitHub App ID
+#     STEWARD_APP_PRIVATE_KEY    - GitHub App private key (PEM)
+#     STEWARD_APP_INSTALLATION_ID - Installation ID for this repo
+#
+#   Option B: Personal Access Token
+#     STEWARD_PAT                - PAT with repo scope
+#
+# Customize the env vars below (BOT_USERNAME, GIT_USER_*, schedule, etc.)
+# to match your setup.
+
+name: Steward
+
+on:
+  schedule:
+    # Run every 15 minutes. Adjust as needed.
+    # Note: GitHub may delay scheduled runs during periods of high load.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: # Allow manual triggers from the Actions tab
+
+# Prevent overlapping runs — only one Steward run at a time.
+concurrency:
+  group: steward
+  cancel-in-progress: false
+
+jobs:
+  steward:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # 1. Check out the target repo (the one Steward will work on).
+      - name: Checkout target repo
+        uses: actions/checkout@v6
+        with:
+          path: target-repo
+          # fetch full history so Steward can create branches
+          fetch-depth: 0
+
+      # 2. Check out Steward itself.
+      #    Replace with your org/repo or pin to a release tag.
+      - name: Checkout steward
+        uses: actions/checkout@v6
+        with:
+          repository: YOUR_ORG/steward  # <-- change this
+          ref: main
+          path: steward
+
+      # 3. Set up Node.js and install Steward dependencies.
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install steward dependencies
+        run: npm ci
+        working-directory: steward
+
+      # 4. Run Steward.
+      - name: Run steward
+        working-directory: steward
+        env:
+          # --- Authentication (Option A: GitHub App) ---
+          GITHUB_APP_ID: ${{ secrets.STEWARD_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.STEWARD_APP_PRIVATE_KEY }}
+          GITHUB_APP_INSTALLATION_ID: ${{ secrets.STEWARD_APP_INSTALLATION_ID }}
+
+          # --- Authentication (Option B: PAT) ---
+          # Uncomment the line below and remove the App vars above.
+          # GITHUB_TOKEN: ${{ secrets.STEWARD_PAT }}
+
+          # --- Required ---
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_REPO: ${{ github.repository }}
+          WORK_DIR: ${{ github.workspace }}/target-repo
+          LOG_DIR: ${{ runner.temp }}/steward-logs
+
+          # --- Bot identity ---
+          # For a GitHub App, use the app's slug + [bot] suffix.
+          # For a PAT, use the PAT owner's username.
+          GITHUB_BOT_USERNAME: "steward[bot]"  # <-- change this
+          GIT_USER_NAME: "steward[bot]"         # <-- change this
+          GIT_USER_EMAIL: "steward[bot]@users.noreply.github.com"  # <-- change this
+
+          # --- Optional overrides (uncomment to customize) ---
+          # DRY_RUN: "true"
+          # MAX_RUNTIME_SECONDS: "600"
+          # AGENT_COMMENT_ALLOWLIST: "user1,user2"
+          # REQUIRED_LABELS: "bug,enhancement,feature"
+        run: npm start
+
+      # 5. Upload logs as artifact for debugging.
+      - name: Upload steward logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: steward-logs-${{ github.run_id }}
+          path: ${{ runner.temp }}/steward-logs/
+          retention-days: 14
