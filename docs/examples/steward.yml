@@ -51,7 +51,7 @@ jobs:
       - name: Checkout steward
         uses: actions/checkout@v6
         with:
-          repository: YOUR_ORG/steward  # <-- change this
+          repository: nazuraki/steward
           ref: main
           path: steward
 
