@@ -12,7 +12,6 @@ import { runCommand } from './tools/shell.js';
 import { searchCode } from './tools/search.js';
 import { Reviewer } from './reviewer.js';
 
-const MODEL = 'claude-sonnet-4-6';
 
 export type ImplementResult =
   | { status: 'success'; prNumber: number }
@@ -33,7 +32,7 @@ export class Implementer {
     private readonly gh: GitHubClient,
   ) {
     this.ai = new Anthropic({ apiKey: env.anthropicApiKey });
-    this.reviewer = new Reviewer(env, logger, gh);
+    this.reviewer = new Reviewer(env, config, logger, gh);
   }
 
   async run(issue: IssueSummary, planBody: string): Promise<ImplementResult> {
@@ -122,7 +121,7 @@ export class Implementer {
 
     for (let iteration = 0; iteration < toolIterations; iteration++) {
       const response = await this.ai.messages.create({
-        model: MODEL,
+        model: this.config.models.implement,
         max_tokens: 8096,
         system: this.buildSystemPrompt(contribAgents, context),
         tools: TOOLS,
@@ -289,7 +288,7 @@ export class Implementer {
     const type = conventionalTypeFromLabels(issue.labels);
 
     const response = await this.ai.messages.create({
-      model: MODEL,
+      model: this.config.models.commitTitle,
       max_tokens: 60,
       system: [
         `Write the description portion of a conventional commit subject line.`,

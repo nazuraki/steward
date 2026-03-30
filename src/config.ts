@@ -1,6 +1,14 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
+export interface Models {
+  plan: string;
+  implement: string;
+  commitTitle: string;
+  review: string;
+  prFix: string;
+}
+
 export interface Limits {
   toolIterations: number;
   prFixIterations: number;
@@ -22,6 +30,7 @@ export interface RepoConfig {
   priorityLabels: string[];   // ordered list — first match wins; unlabeled issues sort last
   commands: string[];
   rateLimitThreshold: number;
+  models: Models;
   limits: Limits;
 }
 
@@ -43,6 +52,8 @@ export interface Config {
   repo: RepoConfig;
 }
 
+const DEFAULT_MODEL = 'claude-sonnet-4-6';
+
 const DEFAULTS: RepoConfig = {
   allowlist: [],
   skiplist: [],
@@ -51,6 +62,13 @@ const DEFAULTS: RepoConfig = {
   priorityLabels: ['priority', '<none>', 'nice to have'],
   commands: [],
   rateLimitThreshold: 100,
+  models: {
+    plan: DEFAULT_MODEL,
+    implement: DEFAULT_MODEL,
+    commitTitle: DEFAULT_MODEL,
+    review: DEFAULT_MODEL,
+    prFix: DEFAULT_MODEL,
+  },
   limits: {
     toolIterations: 25,
     prFixIterations: 10,
@@ -170,6 +188,10 @@ export function loadRepoConfig(workDir: string): RepoConfig {
     ...DEFAULTS,
     ...fileConfig,
     ...envOverrides,
+    models: {
+      ...DEFAULTS.models,
+      ...(fileConfig.models ?? {}),
+    },
     limits: {
       ...DEFAULTS.limits,
       ...(fileConfig.limits ?? {}),

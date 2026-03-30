@@ -11,7 +11,6 @@ import { readFile, writeFile, listDirectory } from './tools/filesystem.js';
 import { runCommand } from './tools/shell.js';
 import { searchCode } from './tools/search.js';
 
-const MODEL = 'claude-sonnet-4-6';
 
 export type PRFixResult =
   | { status: 'success' }
@@ -89,7 +88,7 @@ export class PRFixer {
 
     for (let iteration = 0; iteration < prFixIterations; iteration++) {
       const response = await this.ai.messages.create({
-        model: MODEL,
+        model: this.config.models.prFix,
         max_tokens: 8096,
         system: this.buildSystemPrompt(contribAgents, context),
         tools: PR_TOOLS,

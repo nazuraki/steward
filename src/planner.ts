@@ -9,7 +9,6 @@ import type { IssueSummary } from './types.js';
 
 const PLAN_MAX_LINES = 200;
 const PLAN_MAX_CHARS = 8000;
-const MODEL = 'claude-sonnet-4-6';
 
 export class Planner {
   private readonly ai: Anthropic;
@@ -36,7 +35,7 @@ export class Planner {
         : this.buildUserPrompt(issue, true);
 
       const response = await this.ai.messages.create({
-        model: MODEL,
+        model: this.config.models.plan,
         max_tokens: 2048,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],

@@ -8,15 +8,12 @@
 #
 # Authentication — choose ONE:
 #   Option A (recommended): GitHub App
-#     STEWARD_APP_ID             - GitHub App ID
-#     STEWARD_APP_PRIVATE_KEY    - GitHub App private key (PEM)
+#     STEWARD_APP_ID              - GitHub App ID
+#     STEWARD_APP_PRIVATE_KEY     - GitHub App private key (PEM)
 #     STEWARD_APP_INSTALLATION_ID - Installation ID for this repo
 #
 #   Option B: Personal Access Token
-#     STEWARD_PAT                - PAT with repo scope
-#
-# Customize the env vars below (BOT_USERNAME, GIT_USER_*, schedule, etc.)
-# to match your setup.
+#     STEWARD_PAT                 - PAT with repo scope
 
 name: Steward
 
@@ -38,71 +35,24 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # 1. Check out the target repo (the one Steward will work on).
-      - name: Checkout target repo
-        uses: actions/checkout@v6
+      # Check out the target repo (the one Steward will work on).
+      - uses: actions/checkout@v6
         with:
-          path: target-repo
-          # fetch full history so Steward can create branches
-          fetch-depth: 0
+          fetch-depth: 0 # full history so Steward can create branches
 
-      # 2. Check out Steward itself.
-      #    Replace with your org/repo or pin to a release tag.
-      - name: Checkout steward
-        uses: actions/checkout@v6
+      - uses: nazuraki/steward@v1
         with:
-          repository: nazuraki/steward
-          ref: main
-          path: steward
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-      # 3. Set up Node.js and install Steward dependencies.
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22"
+          # Option A: GitHub App (recommended)
+          github_app_id: ${{ secrets.STEWARD_APP_ID }}
+          github_app_private_key: ${{ secrets.STEWARD_APP_PRIVATE_KEY }}
+          github_app_installation_id: ${{ secrets.STEWARD_APP_INSTALLATION_ID }}
 
-      - name: Install steward dependencies
-        run: npm ci
-        working-directory: steward
+          # Option B: PAT — uncomment and remove the App vars above
+          # github_token: ${{ secrets.STEWARD_PAT }}
 
-      # 4. Run Steward.
-      - name: Run steward
-        working-directory: steward
-        env:
-          # --- Authentication (Option A: GitHub App) ---
-          GITHUB_APP_ID: ${{ secrets.STEWARD_APP_ID }}
-          GITHUB_APP_PRIVATE_KEY: ${{ secrets.STEWARD_APP_PRIVATE_KEY }}
-          GITHUB_APP_INSTALLATION_ID: ${{ secrets.STEWARD_APP_INSTALLATION_ID }}
-
-          # --- Authentication (Option B: PAT) ---
-          # Uncomment the line below and remove the App vars above.
-          # GITHUB_TOKEN: ${{ secrets.STEWARD_PAT }}
-
-          # --- Required ---
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_REPO: ${{ github.repository }}
-          WORK_DIR: ${{ github.workspace }}/target-repo
-          LOG_DIR: ${{ runner.temp }}/steward-logs
-
-          # --- Bot identity ---
-          # For a GitHub App, use the app's slug + [bot] suffix.
-          # For a PAT, use the PAT owner's username.
-          GITHUB_BOT_USERNAME: "steward[bot]"  # <-- change this
-          GIT_USER_NAME: "steward[bot]"         # <-- change this
-          GIT_USER_EMAIL: "steward[bot]@users.noreply.github.com"  # <-- change this
-
-          # --- Optional overrides (uncomment to customize) ---
-          # DRY_RUN: "true"
-          # MAX_RUNTIME_SECONDS: "600"
-          # AGENT_COMMENT_ALLOWLIST: "user1,user2"
-          # REQUIRED_LABELS: "bug,enhancement,feature"
-        run: npm start
-
-      # 5. Upload logs as artifact for debugging.
-      - name: Upload steward logs
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: steward-logs-${{ github.run_id }}
-          path: ${{ runner.temp }}/steward-logs/
-          retention-days: 14
+          # For a GitHub App use "appname[bot]"; for a PAT use the token owner's username.
+          bot_username: steward[bot]            # <-- change this
+          git_user_name: steward[bot]           # <-- change this
+          git_user_email: steward[bot]@users.noreply.github.com  # <-- change this

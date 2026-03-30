@@ -98,8 +98,8 @@ GITHUB_BOT_USERNAME=steward[bot]
 
 > **Tip — storing the private key:** When setting `GITHUB_APP_PRIVATE_KEY` as an environment variable or Actions secret, replace each newline in the PEM file with the literal two characters `\n`. Steward normalizes these back automatically.
 >
+> One-liner to convert a downloaded .pem to the env var format:
 > ```bash
-> # One-liner to convert a downloaded .pem to the env var format:
 > cat steward.pem | awk '{printf "%s\\n", $0}' | pbcopy
 > ```
 
@@ -107,22 +107,25 @@ If all three App vars are present, steward uses them and ignores `GITHUB_TOKEN`.
 
 ---
 
-## Local development
+## Deployment
 
-Copy `.env.example` to `.env`, fill in your values, then:
+### GitHub Actions (recommended)
 
-```bash
-npm run dev
+Copy [`docs/examples/steward.yml`](docs/examples/steward.yml) to `.github/workflows/steward.yml` in the target repo. It uses the published action — no need to check out this repo separately.
+
+```yaml
+- uses: nazuraki/steward@v1
+  with:
+    anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    github_app_id: ${{ secrets.STEWARD_APP_ID }}
+    github_app_private_key: ${{ secrets.STEWARD_APP_PRIVATE_KEY }}
+    github_app_installation_id: ${{ secrets.STEWARD_APP_INSTALLATION_ID }}
+    bot_username: steward[bot]
+    git_user_name: steward[bot]
+    git_user_email: steward[bot]@users.noreply.github.com
 ```
 
-`WORK_DIR` and `LOG_DIR` can be any local paths — steward creates them if they don't exist:
-
-```
-WORK_DIR=/tmp/steward-work
-LOG_DIR=/tmp/steward-logs
-```
-
-Each run clones the target repo fresh into `WORK_DIR` and appends a JSON record to `$LOG_DIR/runs.jsonl`.
+All repo-level configuration (labels, allowlists, models, limits) goes in `steward.json` in the target repo — not in the workflow file.
 
 ---
 
@@ -139,6 +142,13 @@ Steward reads `steward.json` (or `.steward.json` or `steward.config.json`) from 
   "priorityLabels": ["priority", "<none>", "nice to have"],
   "commands": ["npm test", "npm run lint"],
   "rateLimitThreshold": 100,
+  "models": {
+    "plan": "claude-sonnet-4-6",
+    "implement": "claude-sonnet-4-6",
+    "commitTitle": "claude-haiku-4-5-20251001",
+    "review": "claude-sonnet-4-6",
+    "prFix": "claude-sonnet-4-6"
+  },
   "limits": {
     "toolIterations": 25,
     "prFixIterations": 10,
@@ -154,7 +164,7 @@ Steward reads `steward.json` (or `.steward.json` or `steward.config.json`) from 
 }
 ```
 
-Any key can be overridden by a corresponding environment variable — see `.env.example` for the full list.
+Most keys can be overridden by a corresponding environment variable — see `.env.example` for the full list. `models` is the exception: it is only configurable via the JSON file.
 
 ### `requiredLabels`
 
@@ -184,3 +194,22 @@ Use `<none>` or `<missing>` as a sentinel to explicitly position unlabeled issue
 ```
 
 This places unlabeled issues between `priority` and `nice to have` issues. Without the sentinel, unlabeled issues always sort after all labeled tiers.
+
+---
+
+## Local development
+
+Copy `.env.example` to `.env`, fill in your values, then:
+
+```bash
+npm run dev
+```
+
+`WORK_DIR` and `LOG_DIR` can be any local paths — steward creates them if they don't exist:
+
+```
+WORK_DIR=/tmp/steward-work
+LOG_DIR=/tmp/steward-logs
+```
+
+Each run clones the target repo fresh into `WORK_DIR` and appends a JSON record to `$LOG_DIR/runs.jsonl`.

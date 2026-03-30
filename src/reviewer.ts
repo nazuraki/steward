@@ -1,10 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { EnvConfig } from './config.js';
+import type { EnvConfig, RepoConfig } from './config.js';
 import type { Logger } from './logger.js';
 import type { GitHubClient } from './github.js';
 import type { IssueSummary } from './types.js';
 
-const MODEL = 'claude-sonnet-4-6';
 const LGTM_SIGNAL = 'LGTM';
 
 export type ReviewResult = 'clean' | 'has_issues';
@@ -14,6 +13,7 @@ export class Reviewer {
 
   constructor(
     private readonly env: EnvConfig,
+    private readonly config: RepoConfig,
     private readonly logger: Logger,
     private readonly gh: GitHubClient,
   ) {
@@ -34,7 +34,7 @@ export class Reviewer {
     }
 
     const response = await this.ai.messages.create({
-      model: MODEL,
+      model: this.config.models.review,
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       messages: [{

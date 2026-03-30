@@ -1,0 +1,75 @@
+name: Steward
+description: AI agent that triages issues, writes implementation plans, and opens PRs
+author: nazuraki
+
+inputs:
+  anthropic_api_key:
+    description: Anthropic API key for Claude
+    required: true
+
+  # Authentication — Option A: GitHub App (recommended)
+  github_app_id:
+    description: GitHub App ID
+    required: false
+  github_app_private_key:
+    description: GitHub App private key (PEM)
+    required: false
+  github_app_installation_id:
+    description: GitHub App installation ID for this repo
+    required: false
+
+  # Authentication — Option B: Personal Access Token
+  github_token:
+    description: GitHub PAT with repo scope (if not using App auth)
+    required: false
+
+  # Bot identity — tied to whichever auth method is used
+  bot_username:
+    description: >
+      Bot username shown on comments and commits.
+      For a GitHub App use "appname[bot]"; for a PAT use the token owner's username.
+    required: true
+  git_user_name:
+    description: Git commit author name
+    required: true
+  git_user_email:
+    description: Git commit author email
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+
+    - name: Install Steward dependencies
+      shell: bash
+      run: npm ci
+      working-directory: ${{ github.action_path }}
+
+    - name: Run Steward
+      shell: bash
+      run: npm start
+      working-directory: ${{ github.action_path }}
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        GITHUB_APP_ID: ${{ inputs.github_app_id }}
+        GITHUB_APP_PRIVATE_KEY: ${{ inputs.github_app_private_key }}
+        GITHUB_APP_INSTALLATION_ID: ${{ inputs.github_app_installation_id }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GITHUB_REPO: ${{ github.repository }}
+        GITHUB_BOT_USERNAME: ${{ inputs.bot_username }}
+        GIT_USER_NAME: ${{ inputs.git_user_name }}
+        GIT_USER_EMAIL: ${{ inputs.git_user_email }}
+        WORK_DIR: ${{ github.workspace }}
+        LOG_DIR: ${{ runner.temp }}/steward-logs
+
+    - name: Upload Steward logs
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: steward-logs-${{ github.run_id }}
+        path: ${{ runner.temp }}/steward-logs/
+        retention-days: 14
