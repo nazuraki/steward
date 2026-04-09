@@ -20,6 +20,10 @@ dev:
 check:
     npm run check
 
+# Format code (biome)
+format:
+    npm run format
+
 # Remove build artifacts and node_modules
 clean:
     rm -rf node_modules dist
