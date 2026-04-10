@@ -8,21 +8,28 @@ default:
 install:
     npm install
 
-# Run the agent (requires .env)
+# Run (requires .env)
 run:
     npm start
 
-# Run in dev mode with .env file
+# Run in dev mode
 dev:
     npm run dev
 
-# Lint (biome) + type-check (tsc)
-check:
-    npm run check
+# Run all checks (lint + typecheck)
+check: lint typecheck
 
-# Format code (biome)
-format:
-    npm run format
+# Lint and check formatting
+lint:
+    npx biome check .
+
+# Fix lint and formatting issues
+fix:
+    npx biome check . --write
+
+# Type-check
+typecheck:
+    npm run typecheck
 
 # Remove build artifacts and node_modules
 clean:
