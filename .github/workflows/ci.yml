@@ -1,4 +1,4 @@
-name: Typecheck
+name: CI
 
 on:
   push:
