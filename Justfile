@@ -16,8 +16,16 @@ run:
 dev:
     npm run dev
 
-# Run all checks (lint + typecheck)
-check: lint typecheck
+# Run tests
+test:
+    npm test
+
+# Run tests in watch mode
+test-watch:
+    npm run test:watch
+
+# Run all checks (lint + typecheck + test)
+check: lint typecheck test
 
 # Lint and check formatting
 lint:
