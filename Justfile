@@ -8,6 +8,9 @@ default:
 install:
     npm install
 
+build:
+    echo "Not needed."
+
 # Run (requires .env)
 run:
     npm start
