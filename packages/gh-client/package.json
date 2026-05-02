@@ -1,0 +1,19 @@
+{
+	"name": "@steward/gh-client",
+	"version": "0.1.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"main": "./src/index.ts",
+	"dependencies": {
+		"@steward/core": "workspace:*",
+		"@octokit/graphql": "^8.2.1",
+		"@octokit/rest": "^21.1.1"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.2",
+		"tsx": "^4.19.3",
+		"typescript": "^5.8.3"
+	}
+}

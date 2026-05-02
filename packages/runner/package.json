@@ -1,0 +1,28 @@
+{
+	"name": "@steward/runner",
+	"version": "0.1.0",
+	"type": "module",
+	"main": "./src/index.ts",
+	"scripts": {
+		"start": "node --import tsx/esm src/index.ts",
+		"dev": "node --env-file=../../.env --import tsx/esm src/index.ts",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run --passWithNoTests",
+		"test:watch": "vitest"
+	},
+	"dependencies": {
+		"@steward/auth": "workspace:*",
+		"@steward/config": "workspace:*",
+		"@steward/core": "workspace:*",
+		"@steward/gh-client": "workspace:*",
+		"@anthropic-ai/sdk": "^0.39.0",
+		"uuid": "^11.1.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.2",
+		"@types/uuid": "^10.0.0",
+		"tsx": "^4.19.3",
+		"typescript": "^5.8.3",
+		"vitest": "^4.1.4"
+	}
+}

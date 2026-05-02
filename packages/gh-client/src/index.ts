@@ -7,7 +7,7 @@ import type {
 	ReviewComment,
 	ReviewSummary,
 	ReviewThread,
-} from "./types.js";
+} from "@steward/core";
 
 interface GraphQLReviewThread {
 	id: string;

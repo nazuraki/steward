@@ -44,14 +44,19 @@ runs:
       with:
         node-version: '22'
 
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v5
+      with:
+        version: latest
+
     - name: Install Steward dependencies
       shell: bash
-      run: npm ci
+      run: pnpm install --frozen-lockfile
       working-directory: ${{ github.action_path }}
 
     - name: Run Steward
       shell: bash
-      run: npm start
+      run: pnpm --filter @steward/runner start
       working-directory: ${{ github.action_path }}
       env:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
