@@ -9,7 +9,7 @@ RUN npm install -g pnpm
 WORKDIR /app
 
 # Copy workspace manifests first for layer caching
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/core/package.json ./packages/core/
 COPY packages/auth/package.json ./packages/auth/
 COPY packages/config/package.json ./packages/config/
