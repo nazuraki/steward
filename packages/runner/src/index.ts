@@ -8,7 +8,15 @@ import { Agent } from "./agent.js";
 import { Logger } from "./logger.js";
 import { validate } from "./validate.js";
 
-async function main(): Promise<void> {
+export { resolveGitHubToken } from "@steward/auth";
+export type { EnvConfig, RepoConfig } from "@steward/config";
+export { loadEnvConfig } from "@steward/config";
+export { Agent } from "./agent.js";
+export { Logger } from "./logger.js";
+export type { ValidationResult } from "./validate.js";
+export { validate } from "./validate.js";
+
+export async function main(): Promise<void> {
 	// Resolve GitHub token first — may involve an async App token exchange
 	let githubToken: string;
 	try {
@@ -84,5 +92,3 @@ async function main(): Promise<void> {
 	clearTimeout(timeoutHandle);
 	process.exit(0);
 }
-
-main();

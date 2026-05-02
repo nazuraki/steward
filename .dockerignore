@@ -5,7 +5,7 @@ node_modules
 dist
 docs
 scripts
-docker
+docker/logrotate.conf
 *.md
 .gitignore
 .github
