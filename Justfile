@@ -48,3 +48,15 @@ clean:
 
 # Reinstall from scratch
 fresh: clean install
+
+# Build Docker image
+docker-build:
+    docker build -t steward:latest .
+
+# Run via Docker with full network access (required for GitHub + Anthropic APIs)
+docker-run:
+    DOCKER_NETWORK=bridge docker compose up --no-build
+
+# End-to-end container smoke test (no real credentials required)
+docker-smoke:
+    bash scripts/docker-smoke-test.sh

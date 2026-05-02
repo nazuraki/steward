@@ -1,0 +1,20 @@
+services:
+  steward:
+    build: .
+    image: steward:latest
+    env_file: .env
+    # Security default: no outbound network.
+    # For real runs, set DOCKER_NETWORK=bridge (or the network name) in your shell
+    # before running docker compose, or use: just docker-run
+    network_mode: "${DOCKER_NETWORK:-none}"
+    volumes:
+      - steward-logs:${LOG_DIR:-/var/log/steward}
+    # Rotate container stdout/stderr logs (runs.jsonl is rotated via logrotate.conf)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  steward-logs:

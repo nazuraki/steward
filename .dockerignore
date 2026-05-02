@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+node_modules
+dist
+docs
+scripts
+docker
+*.md
+.gitignore
+.github
+.claude
+.gitnexus
+biome.json
+vitest.config.ts
+Justfile
