@@ -1,57 +1,57 @@
 # steward — GitHub agent
-# Requires: just, node, tsx
+# Requires: just, node, pnpm
 
 default:
     @just --list
 
 # Install dependencies
 install:
-    npm install
+    pnpm install
 
 build:
     echo "Not needed."
 
 # Run (requires .env)
 run:
-    npm start
+    pnpm --filter @steward/runner start
 
 # Run in dev mode
 dev:
-    npm run dev
+    pnpm --filter @steward/runner dev
 
 # Run tests
 test:
-    npm test
+    pnpm -r test
 
 # Run tests in watch mode
 test-watch:
-    npm run test:watch
+    pnpm --filter @steward/runner run test:watch
 
 # Run all checks (lint + typecheck + test)
 check: lint typecheck test
 
 # Lint and check formatting
 lint:
-    npx biome check .
+    pnpm biome check .
 
 # Fix lint and formatting issues
 fix:
-    npx biome check . --write
+    pnpm biome check . --write
 
 # Type-check
 typecheck:
-    npm run typecheck
+    pnpm -r typecheck
 
 # Remove build artifacts and node_modules
 clean:
-    rm -rf node_modules dist
+    rm -rf node_modules dist packages/*/node_modules packages/*/dist
 
 # Reinstall from scratch
 fresh: clean install
 
 # Build Docker image
 docker-build:
-    docker build -t steward:latest .
+    docker build -f packages/runner/Dockerfile -t steward:latest .
 
 # Run via Docker with full network access (required for GitHub + Anthropic APIs)
 docker-run:

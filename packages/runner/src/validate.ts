@@ -1,9 +1,9 @@
 import { execFileSync, execSync } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
-import type { EnvConfig, RepoConfig } from "./config.js";
-import { loadRepoConfig } from "./config.js";
-import { GitHubClient } from "./github.js";
+import type { EnvConfig, RepoConfig } from "@steward/config";
+import { loadRepoConfig } from "@steward/config";
+import { GitHubClient } from "@steward/gh-client";
 
 export interface ValidationResult {
 	ok: boolean;

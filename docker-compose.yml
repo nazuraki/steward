@@ -1,6 +1,8 @@
 services:
   steward:
-    build: .
+    build:
+      context: .
+      dockerfile: packages/runner/Dockerfile
     image: steward:latest
     env_file: .env
     # Security default: no outbound network.

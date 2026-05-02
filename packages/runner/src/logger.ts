@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import type { LogRecord, OutcomeType, TaskType } from "@steward/core";
 import { v4 as uuidv4 } from "uuid";
-import type { LogRecord, OutcomeType, TaskType } from "./types.js";
 
 export class Logger {
 	readonly runId: string;

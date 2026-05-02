@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-import type { EnvConfig, RepoConfig } from "./config.js";
-import type { GitHubClient } from "./github.js";
+import type { EnvConfig, RepoConfig } from "@steward/config";
+import type { IssueSummary } from "@steward/core";
+import type { GitHubClient } from "@steward/gh-client";
 import type { Logger } from "./logger.js";
-import type { IssueSummary } from "./types.js";
 
 const PLAN_MAX_LINES = 200;
 const PLAN_MAX_CHARS = 8000;
