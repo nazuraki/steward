@@ -1,8 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { EnvConfig, RepoConfig } from "@steward/config";
+import type { IssueSummary } from "@steward/core";
 import type { GitHubClient } from "@steward/gh-client";
 import type { Logger } from "./logger.js";
-import type { IssueSummary } from "@steward/core";
 
 const LGTM_SIGNAL = "LGTM";
 

@@ -1,6 +1,10 @@
-import { Agent } from "./agent.js";
 import { resolveGitHubToken } from "@steward/auth";
-import { type EnvConfig, loadEnvConfig, type RepoConfig } from "@steward/config";
+import {
+	type EnvConfig,
+	loadEnvConfig,
+	type RepoConfig,
+} from "@steward/config";
+import { Agent } from "./agent.js";
 import { Logger } from "./logger.js";
 import { validate } from "./validate.js";
 

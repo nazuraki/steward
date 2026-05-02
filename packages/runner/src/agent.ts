@@ -1,10 +1,10 @@
 import type { EnvConfig, RepoConfig } from "@steward/config";
+import type { IssueSummary } from "@steward/core";
 import { GitHubClient } from "@steward/gh-client";
 import { Implementer } from "./implementer.js";
 import type { Logger } from "./logger.js";
 import { Planner } from "./planner.js";
 import { PRFixer } from "./pr-fixer.js";
-import type { IssueSummary } from "@steward/core";
 
 export class Agent {
 	private readonly gh: GitHubClient;

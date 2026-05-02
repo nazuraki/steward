@@ -8,12 +8,12 @@ import type {
 	ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages.js";
 import type { EnvConfig, RepoConfig } from "@steward/config";
+import type { PRSummary } from "@steward/core";
 import type { GitHubClient } from "@steward/gh-client";
 import type { Logger } from "./logger.js";
 import { listDirectory, readFile, writeFile } from "./tools/filesystem.js";
 import { searchCode } from "./tools/search.js";
 import { runCommand } from "./tools/shell.js";
-import type { PRSummary } from "@steward/core";
 
 export type PRFixResult =
 	| { status: "success" }
