@@ -1,0 +1,21 @@
+{
+	"name": "@steward/webhook-loop",
+	"version": "0.1.0",
+	"type": "module",
+	"scripts": {
+		"start": "node --import tsx/esm src/index.ts",
+		"dev": "node --env-file=../../.env --import tsx/esm src/index.ts",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run --passWithNoTests",
+		"test:watch": "vitest"
+	},
+	"dependencies": {
+		"@steward/runner": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.2",
+		"tsx": "^4.19.3",
+		"typescript": "^5.8.3",
+		"vitest": "^4.1.4"
+	}
+}

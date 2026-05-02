@@ -18,5 +18,27 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  steward-webhook:
+    build:
+      context: .
+      dockerfile: packages/runner/Dockerfile
+    image: steward:latest
+    env_file: .env
+    environment:
+      STEWARD_MODE: webhook
+      # PORT: 3000          # default
+      # WEBHOOK_SECRET: ""  # required
+      # WEBHOOK_EVENTS: "issues,issue_comment,pull_request_review"
+    network_mode: "${DOCKER_NETWORK:-bridge}"
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    volumes:
+      - steward-logs:${LOG_DIR:-/var/log/steward}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
 volumes:
   steward-logs:

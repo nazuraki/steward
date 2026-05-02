@@ -4,8 +4,8 @@
 	"type": "module",
 	"main": "./src/index.ts",
 	"scripts": {
-		"start": "node --import tsx/esm src/index.ts",
-		"dev": "node --env-file=../../.env --import tsx/esm src/index.ts",
+		"start": "node --import tsx/esm src/bin.ts",
+		"dev": "node --env-file=../../.env --import tsx/esm src/bin.ts",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run --passWithNoTests",
 		"test:watch": "vitest"

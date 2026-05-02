@@ -19,6 +19,10 @@ run:
 dev:
     pnpm --filter @steward/runner dev
 
+# Run webhook-loop in dev mode (requires WEBHOOK_SECRET in .env)
+webhook-dev:
+    pnpm --filter @steward/webhook-loop dev
+
 # Run tests
 test:
     pnpm -r test
